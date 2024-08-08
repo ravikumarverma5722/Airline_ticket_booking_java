@@ -1,15 +1,15 @@
-
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+import okhttp3.*;
 
 public class AirlineTicketApplication {
 
-    public static void main(String[] args) {
-        AirlineTicketApplication app = new AirlineTicketApplication();
-        app.processTicketBooking("John Doe", "Economy", 2);
-    }
+    private static final String DATABASE_URL = "jdbc:sqlite:airline.db";
+    private static final String API_URL = "https://api.example.com/confirmBooking";
 
     public void processTicketBooking(String passengerName, String ticketClass, int numberOfTickets) {
         double totalCost = calculateTotalCost(ticketClass, numberOfTickets);
@@ -32,14 +32,18 @@ public class AirlineTicketApplication {
     public double calculateTotalCost(String ticketClass, int numberOfTickets) {
         double pricePerTicket;
         
-        if ("Economy".equalsIgnoreCase(ticketClass)) {
-            pricePerTicket = 100.00;
-        } else if ("Business".equalsIgnoreCase(ticketClass)) {
-            pricePerTicket = 200.00;
-        } else if ("FirstClass".equalsIgnoreCase(ticketClass)) {
-            pricePerTicket = 300.00;
-        } else {
-            throw new IllegalArgumentException("Invalid ticket class: " + ticketClass);
+        switch (ticketClass.toLowerCase()) {
+            case "economy":
+                pricePerTicket = 100.00;
+                break;
+            case "business":
+                pricePerTicket = 200.00;
+                break;
+            case "firstclass":
+                pricePerTicket = 300.00;
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid ticket class: " + ticketClass);
         }
         
         return pricePerTicket * numberOfTickets;
@@ -54,12 +58,9 @@ public class AirlineTicketApplication {
     }
 
     public boolean saveBookingToDatabase(Booking booking) {
-        String jdbcUrl = "jdbc:mysql://localhost:3306/airline";
-        String jdbcUsername = "root";
-        String jdbcPassword = "password";
         String sql = "INSERT INTO bookings (passenger_name, ticket_class, number_of_tickets, total_cost) VALUES (?, ?, ?, ?)";
 
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUsername, jdbcPassword);
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setString(1, booking.getPassengerName());
@@ -76,13 +77,48 @@ public class AirlineTicketApplication {
     }
 
     public void callConfirmationAPI(Booking booking) {
-        String apiUrl = "https://api.example.com/confirmBooking";
-        String requestPayload = String.format("{\"name\":\"%s\",\"totalCost\":%.2f}", booking.getPassengerName(), booking.getTotalCost());
+        OkHttpClient client = new OkHttpClient();
+
+        Map<String, Object> requestPayload = new HashMap<>();
+        requestPayload.put("name", booking.getPassengerName());
+        requestPayload.put("totalCost", booking.getTotalCost());
+
+        String jsonPayload = new org.json.JSONObject(requestPayload).toString();
+
+        RequestBody body = RequestBody.create(
+                MediaType.parse("application/json; charset=utf-8"),
+                jsonPayload
+        );
+
+        Request request = new Request.Builder()
+                .url(API_URL)
+                .post(body)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (response.isSuccessful()) {
+                System.out.println("Booking confirmed.");
+            } else {
+                System.out.println("Failed to confirm booking.");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Error during API call.");
+        }
+    }
+}
+
+
+public class Main {
+    public static void main(String[] args) {
+        // This is where your program starts
+        System.out.println("Welcome to the Airline Ticket Application!");
+
+        // Create an instance of AirlineTicketApplication
+        AirlineTicketApplication app = new AirlineTicketApplication();
         
-        // Simulating an API call
-        System.out.println("Calling API: " + apiUrl);
-        System.out.println("Payload: " + requestPayload);
-        
-        // In a real-world application, you would use a library like HttpClient to make the API call.
+        // Process a ticket booking
+        app.processTicketBooking("John Doe", "Economy", 2);
+
     }
 }
